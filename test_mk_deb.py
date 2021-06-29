@@ -6,6 +6,7 @@ import tempfile
 import collections
 import platform
 import unittest
+import logging
 
 from mk_deb import createDebianPackage
 
@@ -33,11 +34,12 @@ class TestDebCreation(unittest.TestCase):
         os.system('tar xf mk_deb.test_data.tar')
 
         # Create the deb package
-        Args = collections.namedtuple('Args', ['build', 'deb', 'compress_level'])
-        createDebianPackage(Args('sandbox.ref', 'foo.deb', 8))
+        Args = collections.namedtuple('Args', ['build', 'deb', 'compress_level', 'use_gzip_module'])
+        createDebianPackage(Args('sandbox.ref', 'foo.deb', 8, False))
 
         # List the content of the archive
-        output = os.popen('ar t foo.deb').read()
+        with os.popen('ar t foo.deb') as f:
+            output = f.read()
 
         referenceOutput = '''\
 debian-binary
@@ -76,7 +78,9 @@ data.tar.gz
             # $ cp a.out sandbox.ref/usr/local/bin/fake_server
             # $ tar cf mk_deb.test_data.tar sandbox.ref
             #
-            fakeServerResult = os.popen("/usr/local/bin/fake_server.sh").read()
+            with os.popen("/usr/local/bin/fake_server.sh") as f:
+                fakeServerResult = f.read()
+
             assert fakeServerResult == 'hello' + '\n'
 
             # Finally remove the .deb package
@@ -84,4 +88,7 @@ data.tar.gz
 
 
 if __name__ == "__main__":
+    logging.getLogger().setLevel(logging.INFO)
+    logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s')
+
     unittest.main()

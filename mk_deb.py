@@ -7,8 +7,22 @@ import sys
 import shutil
 import tempfile
 import logging
+import gzip
 
 import pigz_python
+
+
+def compressFile(path, compressionLevel, useGzipModule=True):
+    if useGzipModule:
+        with open(path, 'rb') as f:
+            with gzip.open(path + '.gz', 'wb', compresslevel=compressionLevel) as g:
+                g.write(f.read())
+    else:
+        pigz_python.compress_file(path, compresslevel=compressionLevel)
+
+    with gzip.open(path + '.gz') as f:
+        size = len(f.read())
+        logging.info(f'Compressed file size: {size} bytes')
 
 
 def createDebianPackage(args):
@@ -68,7 +82,7 @@ def createDebianPackage(args):
     # Compress the .tar file ourself with pigz which is faster
     # than the gzip binary
     logging.info(f'Compressing data at zlib compression level {args.compress_level}')
-    pigz_python.compress_file(archive, compresslevel=args.compress_level)
+    compressFile(archive, args.compress_level, args.use_gzip_module)
     os.unlink(archive)
 
     # 3. Create debian file
@@ -92,6 +106,7 @@ if __name__ == "__main__":
     parser.add_argument("--build", help="Input folder", required=True)
     parser.add_argument("--deb", help="Output .deb file", required=True)
     parser.add_argument("--gzip_only", help="Compression level")
+    parser.add_argument("--use_gzip_module", help="Compression level")
     parser.add_argument("--compress_level", help="Compression level", default=6, type=int)
     args = parser.parse_args()
 
