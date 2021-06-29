@@ -8,11 +8,10 @@ import platform
 import unittest
 import logging
 
-from mk_deb import createDebianPackage
+from mk_deb import createDebianPackage, compressFile
 
 
 class TestDebCreation(unittest.TestCase):
-
     def setUp(self):
         self.pwd = os.path.dirname(os.path.realpath(__file__))
         self.tempDir = tempfile.mkdtemp()
@@ -22,55 +21,67 @@ class TestDebCreation(unittest.TestCase):
         shutil.rmtree(self.tempDir)
 
     def testCreateAndInstall(self):
-        '''
+        """
         Simple test using a reference input
-        '''
-        sandboxTarBall = os.path.join(self.pwd, 'mk_deb.test_data.tar')
+        """
+        sandboxTarBall = os.path.join(self.pwd, "mk_deb.test_data.tar")
         print(sandboxTarBall)
 
         # Copy the tarball and extract it
         shutil.copy(sandboxTarBall, self.tempDir)
         os.chdir(self.tempDir)
-        os.system('tar xf mk_deb.test_data.tar')
+        os.system("tar xf mk_deb.test_data.tar")
 
         # Create the deb package
-        Args = collections.namedtuple('Args', ['build', 'deb', 'compress_level', 'use_gzip_module'])
-        createDebianPackage(Args('sandbox.ref', 'foo.deb', 8, False))
+        Args = collections.namedtuple(
+            "Args",
+            [
+                "build",
+                "deb",
+                "compress_level",
+                "use_gzip_module",
+                "workers",
+                "blocksize",
+            ],
+        )
+        createDebianPackage(Args("sandbox.ref", "foo.deb", 8, False, 16, 128))
 
         # List the content of the archive
-        with os.popen('ar t foo.deb') as f:
+        with os.popen("ar t foo.deb") as f:
             output = f.read()
 
-        referenceOutput = '''\
+        referenceOutput = """\
 debian-binary
 control.tar.gz
 data.tar.gz
-'''
+"""
         assert output == referenceOutput
 
         # Simple tests to extract members from the archive
-        for filename in ['debian-binary', 'control.tar.gz', 'data.tar.gz']:
-            assert os.system(f'ar x foo.deb {filename}') == 0
-            assert os.system(f'cksum {filename}') == 0
+        for filename in ["debian-binary", "control.tar.gz", "data.tar.gz"]:
+            assert os.system(f"ar x foo.deb {filename}") == 0
+            assert os.system(f"cksum {filename}") == 0
             os.unlink(filename)
 
-        if platform.system() == 'Linux':
+        if platform.system() == "Linux":
             # Remove the package in case a previous install failed
-            os.system('sudo dpkg -r mk_deb_fake_package')
+            os.system("sudo dpkg -r mk_deb_fake_package")
 
             # Now try to install the debian package
-            assert os.system('sudo dpkg -i foo.deb') == 0
+            assert os.system("sudo dpkg -i foo.deb") == 0
 
             # Make sure that postinstall worked OK, and changed the installed file permission
-            # to be owned by the www-data user 
-            lsResult = os.popen("ls -lt /usr/local/bin/fake_server | awk '{ print $3 }'").read()
-            assert lsResult == 'www-data' + '\n'
+            # to be owned by the www-data user
+            lsResult = os.popen(
+                "ls -lt /usr/local/bin/fake_server | awk '{ print $3 }'"
+            ).read()
+            assert lsResult == "www-data" + "\n"
 
             # Try to run the installed binary, which just print hello. The binary was made as is
             #
             # $ cat /tmp/foo.c
             # #include <stdio.h>
-            # 
+            #
             # int main () { puts("hello"); }
             # $ gcc -static /tmp/foo.c
             # $ ./a.out
@@ -81,14 +92,24 @@ data.tar.gz
             with os.popen("/usr/local/bin/fake_server.sh") as f:
                 fakeServerResult = f.read()
 
-            assert fakeServerResult == 'hello' + '\n'
+            assert fakeServerResult == "hello" + "\n"
 
             # Finally remove the .deb package
-            assert os.system('sudo dpkg -r mk_deb_fake_package') == 0
+            assert os.system("sudo dpkg -r mk_deb_fake_package") == 0
 
+    def testCompressFile(self):
+        workers = 16
+        blocksize = 128
+
+        for i in range(10):
+            tempFile = os.path.join(self.tempDir, 'input_file')
+            with open(tempFile, 'wb') as f:
+                f.write(os.urandom(100 * 1000)) # 100K
+
+            compressFile(tempFile, 8, False, workers, blocksize)
 
 if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
-    logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s')
+    logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s")
 
     unittest.main()
