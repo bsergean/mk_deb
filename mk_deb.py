@@ -15,16 +15,18 @@ import pigz_python
 def compressFile(
     path, compressionLevel, useGzipModule=True, workers=None, blocksize=None
 ):
+    if workers is None:
+        workers = os.cpu_count()  # internal pigz constant, CPU_COUNT
+    if blocksize is None:
+        blocksize = 128  # internal pigz constant, DEFAULT_BLOCK_SIZE_KB
+
+    logging.info(f"Compressing {path} at zlib compression level {compressionLevel}, use gzip module: {useGzipModule} workers count: {workers} blocksize {blocksize}")
+
     if useGzipModule:
         with open(path, "rb") as f:
             with gzip.open(path + ".gz", "wb", compresslevel=compressionLevel) as g:
                 g.write(f.read())
     else:
-        if workers is None:
-            workers = os.cpu_count()  # internal pigz constant, CPU_COUNT
-        if blocksize is None:
-            blocksize = 128  # internal pigz constant, DEFAULT_BLOCK_SIZE_KB
-
         pigz_python.compress_file(
             path, compresslevel=compressionLevel, blocksize=blocksize, workers=workers
         )
@@ -88,7 +90,6 @@ def createDebianPackage(args):
 
     # Compress the .tar file ourself with pigz which is faster
     # than the gzip binary
-    logging.info(f"Compressing data at zlib compression level {args.compress_level}")
     compressFile(
         archive, args.compress_level, args.use_gzip_module, args.workers, args.blocksize
     )
