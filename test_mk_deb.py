@@ -102,11 +102,12 @@ data.tar.gz
         blocksize = 128
 
         for i in range(10):
-            tempFile = os.path.join(self.tempDir, 'input_file')
-            with open(tempFile, 'wb') as f:
-                f.write(os.urandom(100 * 1000)) # 100K
+            tempFile = os.path.join(self.tempDir, "input_file")
+            with open(tempFile, "wb") as f:
+                f.write(os.urandom(100 * 1000))  # 100K
 
             compressFile(tempFile, 8, False, workers, blocksize)
+
 
 if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
