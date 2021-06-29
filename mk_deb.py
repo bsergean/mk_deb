@@ -12,13 +12,19 @@ import gzip
 import pigz_python
 
 
-def compressFile(path, compressionLevel, useGzipModule=True):
+def compressFile(path, compressionLevel, useGzipModule=True, workers=None):
     if useGzipModule:
         with open(path, 'rb') as f:
             with gzip.open(path + '.gz', 'wb', compresslevel=compressionLevel) as g:
                 g.write(f.read())
     else:
-        pigz_python.compress_file(path, compresslevel=compressionLevel)
+        if workers is None:
+            workers = pigz_python.CPU_COUNT
+
+        pigz_python.compress_file(path,
+                                  compresslevel=compressionLevel,
+                                  blocksize=pigz_python.DEFAULT_BLOCK_SIZE_KB,
+                                  workers=workers)
 
     with gzip.open(path + '.gz') as f:
         size = len(f.read())
@@ -108,10 +114,13 @@ if __name__ == "__main__":
     parser.add_argument("--gzip_only", help="Compression level")
     parser.add_argument("--use_gzip_module", help="Compression level")
     parser.add_argument("--compress_level", help="Compression level", default=6, type=int)
+    parser.add_argument("--workers", help="Worker threads count", default=16, type=int)
     args = parser.parse_args()
 
     if args.gzip_only:
         # Test mode to see how fast we can gzip compress a file
         pigz_python.compress_file(args.gzip_only, compresslevel=args.compress_level)
+
+        os.unlink(args.gzip_only + '.gz')
     else:
         createDebianPackage(args)
