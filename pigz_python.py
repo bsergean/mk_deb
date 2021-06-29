@@ -82,6 +82,9 @@ class PigzFile:  # pylint: disable=too-many-instance-attributes
         # Start the read thread
         self.read_thread.start()
 
+        # First block until reading is complete
+        self.read_thread.join()
+
         # Block until writing is complete
         # This prevents us from returning prior to the work being done
         self.write_thread.join()
@@ -234,28 +237,31 @@ class PigzFile:  # pylint: disable=too-many-instance-attributes
         """
         # Initialize this to 0 so our increment sets first chunk to 1
         chunk_num = 0
+
+        input_file_size = os.path.getsize(self.compression_target)
+        chunks_count = (input_file_size // self.blocksize) + 1
+
         with open(self.compression_target, "rb") as input_file:
             while True:
                 chunk = input_file.read(self.blocksize)
                 # Break out of the loop if we didn't read anything
                 if not chunk:
-                    with self._last_chunk_lock:
-                        self._last_chunk = chunk_num
                     break
 
                 self.input_size += len(chunk)
                 chunk_num += 1
-                # Apply this chunk to the pool
-                self.pool.apply_async(self._process_chunk, (chunk_num, chunk))
 
-    def _process_chunk(self, chunk_num: int, chunk: bytes):
+                is_last_chunk = chunk_num == chunks_count
+
+                # Apply this chunk to the pool
+                self.pool.apply_async(self._process_chunk, (chunk_num, chunk, is_last_chunk))
+
+    def _process_chunk(self, chunk_num: int, chunk: bytes, is_last_chunk: bool):
         """
         Overall method to handle the chunk and pass it back to the write thread.
         This method is run on the pool.
         """
-        with self._last_chunk_lock:
-            last_chunk = chunk_num == self._last_chunk
-        compressed_chunk = self._compress_chunk(chunk, last_chunk)
+        compressed_chunk = self._compress_chunk(chunk, is_last_chunk)
         self.chunk_queue.put((chunk_num, chunk, compressed_chunk))
 
     def _compress_chunk(self, chunk: bytes, is_last_chunk: bool):
@@ -287,7 +293,7 @@ class PigzFile:  # pylint: disable=too-many-instance-attributes
         next_chunk_num = 1
         while True:
             if not self.chunk_queue.empty():
-                chunk_num, chunk, compressed_chunk = self.chunk_queue.get()
+                chunk_num, chunk, compressed_chunk, is_last_chunk = self.chunk_queue.get()
 
                 if chunk_num != next_chunk_num:
                     # If this isn't the next chunk we're looking for,
@@ -301,7 +307,7 @@ class PigzFile:  # pylint: disable=too-many-instance-attributes
                     self.output_file.write(compressed_chunk)
                     # If this was the last chunk,
                     # we can break the loop and close the file
-                    if chunk_num == self._last_chunk:
+                    if is_last_chunk:
                         break
                     next_chunk_num += 1
             else:
