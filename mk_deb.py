@@ -42,7 +42,7 @@ def compressFile(
             return decompressedData
 
     except zlib.error as e:
-        if useGzipModule or True:
+        if useGzipModule:
             # We were already using the gzip module to compress, there is no hope, so fail
             raise
         else:
@@ -51,7 +51,7 @@ def compressFile(
             return compressFile(path, compressionLevel, True, workers, blocksize)
 
     except EOFError as e:
-        if useGzipModule or True:
+        if useGzipModule:
             # We were already using the gzip module to compress, there is no hope, so fail
             raise
         else:
