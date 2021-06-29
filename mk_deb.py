@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fast debian package creator"""
+'''Fast debian package creator'''
 
 import argparse
 import os
@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import logging
 import gzip
+import zlib
 
 import pigz_python
 
@@ -20,24 +21,47 @@ def compressFile(
     if blocksize is None:
         blocksize = 128  # internal pigz constant, DEFAULT_BLOCK_SIZE_KB
 
-    logging.info(f"Compressing {path} at zlib compression level {compressionLevel}, use gzip module: {useGzipModule} workers count: {workers} blocksize {blocksize}")
+    logging.info(
+        f'Compressing {path} at zlib compression level {compressionLevel}, use gzip module: {useGzipModule} workers count: {workers} blocksize {blocksize}'
+    )
 
     if useGzipModule:
-        with open(path, "rb") as f:
-            with gzip.open(path + ".gz", "wb", compresslevel=compressionLevel) as g:
+        with open(path, 'rb') as f:
+            with gzip.open(path + '.gz', 'wb', compresslevel=compressionLevel) as g:
                 g.write(f.read())
     else:
         pigz_python.compress_file(
             path, compresslevel=compressionLevel, blocksize=blocksize, workers=workers
         )
 
-    with gzip.open(path + ".gz") as f:
-        size = len(f.read())
-        logging.info(f"Compressed file size: {size} bytes")
+    try:
+        with gzip.open(path + '.gz') as f:
+            decompressedData = f.read()
+            logging.info(f'Compressed file size: {len(decompressedData)} bytes')
+
+            return decompressedData
+
+    except zlib.error as e:
+        if useGzipModule or True:
+            # We were already using the gzip module to compress, there is no hope, so fail
+            raise
+        else:
+            # Try again with the gzip module now.
+            logging.error(f'Compression error: {e}, fallback to gzip module')
+            return compressFile(path, compressionLevel, True, workers, blocksize)
+
+    except EOFError as e:
+        if useGzipModule or True:
+            # We were already using the gzip module to compress, there is no hope, so fail
+            raise
+        else:
+            # Try again with the gzip module now.
+            logging.error(f'Compression error: {e}, fallback to gzip module')
+            return compressFile(path, compressionLevel, True, workers, blocksize)
 
 
 def createDebianPackage(args):
-    """
+    '''
     Create a .deb file like dpkg-deb
     A debian package is a simple ar archive with 3 files.
     https://en.wikipedia.org/wiki/Deb_(file_format)
@@ -66,7 +90,7 @@ def createDebianPackage(args):
 
     $ cat debian-binary
     2.0
-    """
+    '''
     # Make input paths absolute
     root = os.path.abspath(args.build)
     deb = os.path.abspath(args.deb)
@@ -78,15 +102,15 @@ def createDebianPackage(args):
     os.chdir(tmpDir)
 
     # 1. Create compressed tarball for control data
-    controlRoot = os.path.join(root, "DEBIAN")
+    controlRoot = os.path.join(root, 'DEBIAN')
     archive = shutil.make_archive(
-        base_name="control", format="gztar", root_dir=controlRoot
+        base_name='control', format='gztar', root_dir=controlRoot
     )
     shutil.rmtree(controlRoot)
 
     # 2. Create tarball for binary data
-    logging.info("Creating data archive")
-    archive = shutil.make_archive(base_name="data", format="tar", root_dir=root)
+    logging.info('Creating data archive')
+    archive = shutil.make_archive(base_name='data', format='tar', root_dir=root)
 
     # Compress the .tar file ourself with pigz which is faster
     # than the gzip binary
@@ -96,38 +120,38 @@ def createDebianPackage(args):
     os.unlink(archive)
 
     # 3. Create debian file
-    with open("debian-binary", "w") as f:
-        f.write("2.0\n")
+    with open('debian-binary', 'w') as f:
+        f.write('2.0\n')
 
     # Finally create the ar archive, aka the debian package
-    logging.info("Creating ar archive")
-    os.system(f"ar r {deb} debian-binary control.tar.gz data.tar.gz")
+    logging.info('Creating ar archive')
+    os.system(f'ar r {deb} debian-binary control.tar.gz data.tar.gz')
 
     # Cleanup temp dir
     os.chdir(pwd)
     shutil.rmtree(tmpDir)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
-    logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s')
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--build", help="Input folder", required=True)
-    parser.add_argument("--deb", help="Output .deb file", required=True)
-    parser.add_argument("--gzip_only", help="Compression level")
-    parser.add_argument("--use_gzip_module", help="Compression level")
+    parser.add_argument('--build', help='Input folder', required=True)
+    parser.add_argument('--deb', help='Output .deb file', required=True)
+    parser.add_argument('--gzip_only', help='Compression level')
+    parser.add_argument('--use_gzip_module', help='Compression level')
     parser.add_argument(
-        "--compress_level", help="Compression level", default=6, type=int
+        '--compress_level', help='Compression level', default=6, type=int
     )
-    parser.add_argument("--workers", help="Worker threads count", default=16, type=int)
-    parser.add_argument("--blocksize", help="Block size", default=16, type=int)
+    parser.add_argument('--workers', help='Worker threads count', default=16, type=int)
+    parser.add_argument('--blocksize', help='Block size', default=16, type=int)
     args = parser.parse_args()
 
     if args.gzip_only:
         # Test mode to see how fast we can gzip compress a file
         pigz_python.compress_file(args.gzip_only, compresslevel=args.compress_level)
 
-        os.unlink(args.gzip_only + ".gz")
+        os.unlink(args.gzip_only + '.gz')
     else:
         createDebianPackage(args)
